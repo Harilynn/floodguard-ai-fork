@@ -19,8 +19,7 @@ import {
   X,
 } from "lucide-react"
 
-const API_URL =
-  process.env.NEXT_PUBLIC_FLOODGAURD_API_URL || "http://127.0.0.1:8000"
+const API_URL = "https://floodguard-ai-fork.onrender.com"
 
 type ExtractedData = {
   source_type?: string | null
@@ -151,7 +150,7 @@ export default function UserDashboard() {
     
         const timeout = setTimeout(() => {
           controller.abort()
-        }, 5000)
+        }, 60000)
     
         const response = await fetch(
           `${API_URL}/sos`,

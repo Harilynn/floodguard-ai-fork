@@ -21,8 +21,7 @@ import {
   Users,
 } from "lucide-react"
 
-const API_URL =
-  process.env.NEXT_PUBLIC_FLOODGAURD_API_URL || "http://127.0.0.1:8000"
+const API_URL = "https://floodguard-ai-fork.onrender.com"
 
 type Need =
   | "RESCUE"
