@@ -18,6 +18,8 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import re
+import uuid
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -79,7 +81,7 @@ app = FastAPI(
 # LOCAL PERSISTENT SOS STORAGE
 # ============================================================
 
-SOS_FILE = "sos_data.json"
+SOS_FILE = Path(__file__).resolve().parents[1] / "sos_data.json"
 
 
 def load_sos_store():
@@ -110,18 +112,6 @@ def save_sos_store(store):
 
 SOS_STORE = load_sos_store()
 
-SOS_COUNTER = (
-    max(
-        [
-            int(item.get("id", 0))
-            for item in SOS_STORE
-            if str(item.get("id", "")).isdigit()
-        ]
-        or [0]
-    )
-    + 1
-)
-
 #
 # ============================================================
 # FEATURE 1 / 3 / 4 REQUEST MODELS
@@ -150,10 +140,14 @@ class PriorityRequest(BaseModel):
 
 app.add_middleware(
     CORSMiddleware,
-   allow_origins=[
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-],
+    allow_origins=[
+        origin.strip()
+        for origin in os.getenv(
+            "FRONTEND_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000",
+        ).split(",")
+        if origin.strip()
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1068,8 +1062,6 @@ def _geocode_sos_location(extracted):
 
 @app.post("/sos")
 async def analyze_sos(request: SOSRequest):
-    global SOS_COUNTER
-
     try:
         # --------------------------------------------------------
         # FEATURE 3 — SOS INTELLIGENCE
@@ -1110,13 +1102,12 @@ async def analyze_sos(request: SOSRequest):
 
         location = result.get("location", {})
         priority_result.update({
-            "incident_id": f"INC{SOS_COUNTER}",
+            "incident_id": f"INC-{uuid.uuid4().hex[:10].upper()}",
             "people": priority_result["inputs"]["effective_people"],
             "latitude": location.get("latitude"),
             "longitude": location.get("longitude"),
             "status": "WAITING_FOR_RESCUE",
         })
-        SOS_COUNTER += 1
 
         result["priority"] = priority_result
         try:
@@ -1141,17 +1132,7 @@ async def analyze_sos(request: SOSRequest):
                 f"Failed to save incident to rescue_incidents: {log_err}"
             )
 
-        # Allocate boats immediately using priority score and remaining capacity.
-        run_module5()
-
         incident_id = priority_result["incident_id"]
-        assignments = (
-            operations_supabase.table("rescue_assignments")
-            .select("*")
-            .eq("incident_id", incident_id)
-            .execute()
-            .data
-        )
         incident = (
             operations_supabase.table("rescue_incidents")
             .select("*")
@@ -1161,16 +1142,34 @@ async def analyze_sos(request: SOSRequest):
             .data
         )
 
+        # Persist the SOS before running optional allocation work. An allocator
+        # failure must not make a successfully received emergency disappear.
         sos_record = {
             "id": incident_id,
             "created_at": incident["created_at"],
-            "status": "ASSIGNED" if assignments else "PENDING",
+            "status": "PENDING",
             "original_message": request.message,
             "extracted_data": result,
-            "assignments": assignments,
+            "assignments": [],
         }
-
         SOS_STORE.append(sos_record)
+        save_sos_store(SOS_STORE)
+
+        assignments = []
+        try:
+            run_module5()
+            assignments = (
+                operations_supabase.table("rescue_assignments")
+                .select("*")
+                .eq("incident_id", incident_id)
+                .execute()
+                .data
+            )
+        except Exception as allocation_error:
+            print("SOS saved, but allocation failed:", repr(allocation_error))
+
+        sos_record["status"] = "ASSIGNED" if assignments else "PENDING"
+        sos_record["assignments"] = assignments
         save_sos_store(SOS_STORE)
 
         return sos_record
@@ -1220,26 +1219,34 @@ def get_sos_requests():
         if changed:
             save_sos_store(SOS_STORE)
 
-        incidents = (
-            operations_supabase.table("rescue_incidents")
-            .select("*")
-            .order("created_at", desc=True)
-            .execute()
-            .data
-        )
+        try:
+            incidents = (
+                operations_supabase.table("rescue_incidents")
+                .select("*")
+                .order("created_at", desc=True)
+                .execute()
+                .data
+            )
+        except Exception as database_error:
+            print("Could not read rescue incidents; using saved SOS records:", repr(database_error))
+            incidents = []
         requests = []
         stored_sos = {
             str(item.get("id")): item
             for item in SOS_STORE
         }
         for incident in incidents:
-            assignments = (
-                operations_supabase.table("rescue_assignments")
-                .select("*")
-                .eq("incident_id", incident["incident_id"])
-                .execute()
-                .data
-            )
+            try:
+                assignments = (
+                    operations_supabase.table("rescue_assignments")
+                    .select("*")
+                    .eq("incident_id", incident["incident_id"])
+                    .execute()
+                    .data
+                )
+            except Exception as assignment_error:
+                print("Could not read SOS assignments:", repr(assignment_error))
+                assignments = []
 
             stored_request = stored_sos.get(
                 str(incident["incident_id"]),
@@ -1275,7 +1282,10 @@ def get_sos_requests():
 
             requests.append({
                 "id": incident["incident_id"],
-                "created_at": incident["created_at"],
+                "created_at": stored_request.get(
+                    "created_at",
+                    incident["created_at"],
+                ),
                 "status": "ASSIGNED" if assignments else "PENDING",
                 "original_message": stored_request.get(
                     "original_message",
@@ -1284,6 +1294,19 @@ def get_sos_requests():
                 "extracted_data": extracted_data,
                 "assignments": assignments,
             })
+
+        # Include locally persisted SOS records whose incident row is not yet
+        # visible in the operational table, preserving received emergencies.
+        returned_ids = {str(item.get("id")) for item in requests}
+        for stored_request in SOS_STORE:
+            if str(stored_request.get("id")) in returned_ids:
+                continue
+            requests.append(stored_request)
+
+        requests.sort(
+            key=lambda item: item.get("created_at", ""),
+            reverse=True,
+        )
         return {
             "requests": requests
         }

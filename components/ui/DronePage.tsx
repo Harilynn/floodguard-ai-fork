@@ -255,7 +255,9 @@ export default function DronePage() {
         formData.append("file", file)
 
         // IMPORTANT: existing endpoint and model are unchanged.
-        const response = await fetch("http://127.0.0.1:8000/predict", {
+        const apiBaseUrl =
+          process.env.NEXT_PUBLIC_FLOODGAURD_API_URL || "http://127.0.0.1:8000"
+        const response = await fetch(`${apiBaseUrl}/predict`, {
           method: "POST",
           body: formData,
         })

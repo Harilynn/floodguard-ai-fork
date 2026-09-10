@@ -26,7 +26,11 @@ export async function GET(request: Request) {
 
     // Call the FastAPI backend
     // Update the URL if your backend is running on a different port or host
-    const backendUrl = `http://localhost:8000/shelters?latitude=${latitude}&longitude=${longitude}`
+    const backendBaseUrl =
+      process.env.FLOODGUARD_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_FLOODGAURD_API_URL ||
+      'http://localhost:8000'
+    const backendUrl = `${backendBaseUrl}/shelters?latitude=${latitude}&longitude=${longitude}`
 
     const backendResponse = await fetch(backendUrl, {
       method: 'GET',

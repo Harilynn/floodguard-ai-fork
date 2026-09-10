@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+.venv
+node_modules
+.next
+__pycache__
+*.pyc
+floodguard.db
+sos_data.json
+test_images
+README.md
