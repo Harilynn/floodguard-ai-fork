@@ -34,6 +34,38 @@ interface Recommendation {
   reasons: string[]
 }
 
+interface Emergency {
+  sos_id?: string | number
+  rank?: number
+  location?: string
+  latitude?: number | string | null
+  longitude?: number | string | null
+  priority_score?: number
+  status?: string
+  sos_data?: {
+    needs?: {
+      shelter?: boolean | null
+    }
+  }
+}
+
+function validCoordinate(
+  value: number | string | null | undefined,
+  minimum: number,
+  maximum: number
+): boolean {
+  if (value === null || value === undefined || value === "") {
+    return false
+  }
+
+  const numericValue = Number(value)
+  return (
+    Number.isFinite(numericValue) &&
+    numericValue >= minimum &&
+    numericValue <= maximum
+  )
+}
+
 // ============================================================
 // DISTANCE CALCULATION
 // ============================================================
@@ -88,8 +120,8 @@ function recommendShelter(
   const validShelters = shelters
     .filter(
       (shelter) =>
-        Number.isFinite(Number(shelter.latitude)) &&
-        Number.isFinite(Number(shelter.longitude))
+        validCoordinate(shelter.latitude, -90, 90) &&
+        validCoordinate(shelter.longitude, -180, 180)
     )
     .map((shelter) => {
       const distance = calculateDistance(
@@ -614,6 +646,12 @@ export default function SafeRoutePlanner() {
   const [userLocation, setUserLocation] =
     useState<Location | null>(null)
 
+  const [emergencies, setEmergencies] =
+    useState<Emergency[]>([])
+
+  const [selectedEmergencyId, setSelectedEmergencyId] =
+    useState<string | number | null>(null)
+
   const [shelters, setShelters] =
     useState<Shelter[]>([])
 
@@ -627,6 +665,14 @@ export default function SafeRoutePlanner() {
 
   const [sheltersError, setSheltersError] =
     useState<string | null>(null)
+
+  const selectedEmergency = emergencies.find(
+    (emergency) => emergency.sos_id === selectedEmergencyId
+  )
+
+  const shelterRequired = Boolean(
+    selectedEmergency?.sos_data?.needs?.shelter
+  )
 
   // ==========================================================
   // GET TOP-PRIORITY RESCUE LOCATION
@@ -649,29 +695,24 @@ export default function SafeRoutePlanner() {
       }
 
       const data = await response.json()
-      const emergencies = Array.isArray(data.emergencies)
+      const dashboardEmergencies = Array.isArray(data.emergencies)
         ? data.emergencies
         : []
-      const emergency = emergencies.find((item: {
-        latitude?: number | string | null
-        longitude?: number | string | null
-      }) => {
-        const latitude = Number(item.latitude)
-        const longitude = Number(item.longitude)
-        return (
-          Number.isFinite(latitude) &&
-          Number.isFinite(longitude)
-        )
-      })
+      const emergency = dashboardEmergencies.find((item: Emergency) =>
+        validCoordinate(item.latitude, -90, 90) &&
+        validCoordinate(item.longitude, -180, 180)
+      ) as Emergency | undefined
 
       if (
         !emergency ||
-        !Number.isFinite(Number(emergency.latitude)) ||
-        !Number.isFinite(Number(emergency.longitude))
+        !validCoordinate(emergency.latitude, -90, 90) ||
+        !validCoordinate(emergency.longitude, -180, 180)
       ) {
         throw new Error("Top-priority rescue location is unavailable.")
       }
 
+      setEmergencies(dashboardEmergencies as Emergency[])
+      setSelectedEmergencyId(emergency.sos_id ?? null)
       setUserLocation({
         latitude: Number(emergency.latitude),
         longitude: Number(emergency.longitude),
@@ -687,6 +728,22 @@ export default function SafeRoutePlanner() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const selectEmergency = (emergency: Emergency) => {
+    if (
+      !validCoordinate(emergency.latitude, -90, 90) ||
+      !validCoordinate(emergency.longitude, -180, 180)
+    ) {
+      return
+    }
+
+    setSelectedEmergencyId(emergency.sos_id ?? null)
+    setUserLocation({
+      latitude: Number(emergency.latitude),
+      longitude: Number(emergency.longitude),
+    })
+    setLocationError(null)
   }
 
   // ==========================================================
@@ -751,22 +808,21 @@ export default function SafeRoutePlanner() {
   // ==========================================================
 
   useEffect(() => {
-    if (!userLocation) {
+    if (!userLocation || !shelterRequired) {
+      setShelters([])
+      setRecommendation(null)
       return
     }
 
     fetchShelters(userLocation)
-  }, [userLocation])
+  }, [userLocation, shelterRequired])
 
   // ==========================================================
   // RECOMMEND SHELTER
   // ==========================================================
 
   useEffect(() => {
-    if (
-      !userLocation ||
-      shelters.length === 0
-    ) {
+    if (!userLocation || !shelterRequired || shelters.length === 0) {
       setRecommendation(null)
       return
     }
@@ -780,6 +836,7 @@ export default function SafeRoutePlanner() {
   }, [
     userLocation,
     shelters,
+    shelterRequired,
   ])
 
   // ==========================================================
@@ -815,6 +872,34 @@ export default function SafeRoutePlanner() {
   return (
     <div className="space-y-6">
 
+      <section className="overflow-hidden rounded-xl border border-[#183B5B] bg-[#0B1D2D] p-6 text-white shadow-sm sm:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#7DD3FC]">
+              Emergency operations / live route desk
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+              Safe routes for every active SOS
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[#C4D7E8]">
+              Select an emergency location to review its coordinates and, when shelter is requested, identify the nearest available shelter.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm sm:min-w-60">
+            <div className="rounded-lg border border-[#31536F] bg-[#12304A] p-3">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-[#9FC3DD]">Active SOS</div>
+              <div className="mt-1 text-2xl font-semibold">{emergencies.length}</div>
+            </div>
+            <div className="rounded-lg border border-[#31536F] bg-[#12304A] p-3">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-[#9FC3DD]">Shelter requests</div>
+              <div className="mt-1 text-2xl font-semibold">
+                {emergencies.filter((emergency) => emergency.sos_data?.needs?.shelter).length}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ======================================================
           LOCATION NOTICE
       ====================================================== */}
@@ -836,6 +921,77 @@ export default function SafeRoutePlanner() {
               <div className="mt-1 text-xs text-amber-800">
                 {locationError}
               </div>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {emergencies.length > 0 && (
+        <Panel className="overflow-hidden p-5">
+          <SectionHeader
+            eyebrow="Active emergency locations"
+            title="Choose an SOS to plan from"
+            icon="MapPin"
+          />
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {emergencies.map((emergency) => {
+              const selected = emergency.sos_id === selectedEmergencyId
+              const hasCoordinates =
+                validCoordinate(emergency.latitude, -90, 90) &&
+                validCoordinate(emergency.longitude, -180, 180)
+
+              return (
+                <button
+                  key={String(emergency.sos_id ?? emergency.rank)}
+                  type="button"
+                  disabled={!hasCoordinates}
+                  onClick={() => selectEmergency(emergency)}
+                  className={`rounded-lg border p-4 text-left transition ${
+                    selected
+                      ? "border-blue-500 bg-blue-50 shadow-sm"
+                      : "border-[#D6E2EE] bg-white hover:border-blue-300 hover:bg-[#F8FBFD]"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Rank {emergency.rank ?? "-"}
+                    </span>
+                    <StatusBadge
+                      label={emergency.sos_data?.needs?.shelter ? "Shelter needed" : "Rescue"}
+                      tone={emergency.sos_data?.needs?.shelter ? "warning" : "neutral"}
+                    />
+                  </div>
+                  <div className="mt-2 truncate text-sm font-semibold text-[#0f2742]">
+                    {emergency.location || "Location unavailable"}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {hasCoordinates
+                      ? `${Number(emergency.latitude).toFixed(5)}, ${Number(emergency.longitude).toFixed(5)}`
+                      : "Coordinates unavailable"}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {userLocation && (
+        <Panel className="border-blue-100 bg-[#F8FBFD] p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#627D98]">
+                Selected SOS coordinates
+              </div>
+              <div className="mt-2 font-mono text-lg font-semibold text-[#173B5E]">
+                {userLocation.latitude.toFixed(5)}, {userLocation.longitude.toFixed(5)}
+              </div>
+            </div>
+            <div className="text-sm text-slate-600">
+              {shelterRequired
+                ? "Shelter assistance requested. Nearby shelters are shown below."
+                : "Shelter assistance was not requested for this SOS."}
             </div>
           </div>
         </Panel>
@@ -871,7 +1027,8 @@ export default function SafeRoutePlanner() {
           RECOMMENDATION
       ====================================================== */}
 
-      {userLocation &&
+      {shelterRequired &&
+        userLocation &&
         recommendation && (
           <Panel className="p-5">
             <SectionHeader
@@ -1073,7 +1230,7 @@ export default function SafeRoutePlanner() {
                 </div>
 
                 <h3 className="mt-1 text-lg font-semibold text-[#173B5E]">
-                  Top-priority rescue location → recommended shelter
+                  Selected SOS location → recommended shelter
                 </h3>
               </div>
 
@@ -1101,7 +1258,7 @@ export default function SafeRoutePlanner() {
 
               <div className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded-full border-2 border-white bg-blue-600 shadow-sm" />
-                <span>Top-priority rescue location</span>
+                <span>Selected SOS location</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1157,7 +1314,8 @@ export default function SafeRoutePlanner() {
           NO SHELTERS
       ====================================================== */}
 
-      {userLocation &&
+      {shelterRequired &&
+        userLocation &&
         !loading &&
         shelters.length === 0 &&
         !sheltersError && (

@@ -1202,6 +1202,10 @@ async def analyze_sos(request: SOSRequest):
         save_sos_store(SOS_STORE)
 
         assignments = []
+        dispatch_status = "WAITING_FOR_RESOURCES"
+        dispatch_message = (
+            "SOS received. Waiting for an available rescue resource."
+        )
         try:
             run_module5()
             assignments = (
@@ -1211,10 +1215,19 @@ async def analyze_sos(request: SOSRequest):
                 .execute()
                 .data
             )
+            if assignments:
+                dispatch_status = "ASSIGNED"
+                dispatch_message = "Rescue resources have been assigned."
         except Exception as allocation_error:
             print("SOS saved, but allocation failed:", repr(allocation_error))
+            dispatch_status = "DISPATCH_ERROR"
+            dispatch_message = (
+                "SOS received, but automatic dispatch needs operator review."
+            )
 
         sos_record["status"] = "ASSIGNED" if assignments else "PENDING"
+        sos_record["dispatch_status"] = dispatch_status
+        sos_record["dispatch_message"] = dispatch_message
         sos_record["assignments"] = assignments
         save_sos_store(SOS_STORE)
 
@@ -1333,6 +1346,18 @@ def get_sos_requests():
                     incident["created_at"],
                 ),
                 "status": "ASSIGNED" if assignments else "PENDING",
+                "dispatch_status": (
+                    "ASSIGNED"
+                    if assignments
+                    else stored_request.get(
+                        "dispatch_status",
+                        "WAITING_FOR_RESOURCES",
+                    )
+                ),
+                "dispatch_message": stored_request.get(
+                    "dispatch_message",
+                    "SOS received. Waiting for an available rescue resource.",
+                ),
                 "original_message": stored_request.get(
                     "original_message",
                     extracted_data.get("original_message", "")

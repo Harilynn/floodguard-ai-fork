@@ -29,6 +29,8 @@ type SOSRequest = {
   id: string
   created_at: string
   status: string
+  dispatch_status?: string
+  dispatch_message?: string
   original_message: string
   extracted_data: ExtractedData | string
 }
@@ -398,18 +400,20 @@ export default function SOSPage() {
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
 
                         <StatusBadge
-                          label={request.status}
+                          label={request.dispatch_status || request.status}
                           tone={
-                            request.status === "PENDING"
+                            request.dispatch_status === "DISPATCH_ERROR"
+                              ? "critical"
+                              : request.dispatch_status === "WAITING_FOR_RESOURCES" || request.status === "PENDING"
                               ? "warning"
-                              : request.status === "ASSIGNED"
+                              : request.dispatch_status === "ASSIGNED" || request.status === "ASSIGNED"
                                 ? "medium"
                                 : "good"
                           }
                         />
 
                         <span className="hidden xl:inline">
-                          {resources
+                          {request.dispatch_message || resources
                             .slice(0, 4)
                             .map(formatLabel)
                             .join(" · ")}
