@@ -312,7 +312,7 @@ export default function UserSOSPage() {
       setResult(finalResult)
 
       if (
-        finalResult.needs?.shelter &&
+        (finalResult.needs?.shelter || finalResult.needs?.rescue) &&
         finalResult.location?.latitude !== null &&
         finalResult.location?.latitude !== undefined &&
         finalResult.location?.longitude !== null &&
@@ -892,7 +892,7 @@ export default function UserSOSPage() {
             </div>
           )}
 
-          {result?.needs?.shelter && (
+          {(result?.needs?.shelter || result?.needs?.rescue) && (
             <div className="mt-5 rounded-xl border border-blue-100 bg-[#F3F8FC] p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1061,7 +1061,6 @@ export default function UserSOSPage() {
                     {result.needs.shelter && (
                       <NeedBadge label="Shelter" />
                     )}
-
                     {result.needs.medical_transfer && (
                       <NeedBadge label="Medical transfer" />
                     )}

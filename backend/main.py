@@ -113,6 +113,63 @@ def save_sos_store(store):
 
 SOS_STORE = load_sos_store()
 
+
+def load_persistent_sos_records():
+    """Merge durable incident rows with local extraction details when available."""
+    local_records = {str(item.get("id")): item for item in SOS_STORE}
+    try:
+        incidents = (
+            operations_supabase.table("rescue_incidents")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as error:
+        print("Could not load persistent SOS incidents:", repr(error))
+        return list(SOS_STORE)
+
+    records = []
+    for incident in incidents:
+        incident_id = str(incident.get("incident_id"))
+        local = local_records.get(incident_id, {})
+        extracted = local.get("extracted_data")
+        if isinstance(extracted, str):
+            try:
+                extracted = json.loads(extracted)
+            except (json.JSONDecodeError, TypeError):
+                extracted = {}
+        if not isinstance(extracted, dict):
+            extracted = {}
+        extracted["location"] = {
+            **extracted.get("location", {}),
+            "text": incident.get("location_text") or extracted.get("location", {}).get("text"),
+            "latitude": incident.get("latitude"),
+            "longitude": incident.get("longitude"),
+        }
+        extracted["people"] = {
+            **extracted.get("people", {}),
+            "total": incident.get("people_count"),
+        }
+        extracted["needs"] = {
+            **extracted.get("needs", {}),
+            "rescue": bool(incident.get("needs_rescue", extracted.get("needs", {}).get("rescue", True))),
+            "shelter": bool(incident.get("needs_shelter", extracted.get("needs", {}).get("shelter", False))),
+        }
+        records.append({
+            **local,
+            "id": incident_id,
+            "created_at": local.get("created_at", incident.get("created_at")),
+            "status": local.get("status", incident.get("status", "PENDING")),
+            "original_message": local.get("original_message", incident.get("original_message", "")),
+            "extracted_data": extracted,
+        })
+
+    known_ids = {str(item.get("id")) for item in records}
+    records.extend(item for item in SOS_STORE if str(item.get("id")) not in known_ids)
+    return records
+
 #
 # ============================================================
 # FEATURE 1 / 3 / 4 REQUEST MODELS
@@ -159,7 +216,9 @@ app.add_middleware(
 # LOAD DRONE MODEL
 # ============================================================
 
-MODEL_PATH = "backend/models/floodguard_person_v2.pt"
+MODEL_PATH = str(
+    Path(__file__).resolve().parent / "models" / "floodguard_person_v2.pt"
+)
 
 # Detection configuration
 # 0.50 removes very weak false-positive predictions while
@@ -235,13 +294,7 @@ def _extract_location_from_filename(filename: str):
     """
 
     if not filename:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "The uploaded image must have a location-based filename "
-                "in the format: location_state_latitude_longitude_flood.jpg"
-            )
-        )
+        return None
 
     safe_filename = os.path.basename(filename)
 
@@ -261,13 +314,7 @@ def _extract_location_from_filename(filename: str):
     match = pattern.match(stem)
 
     if not match:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid drone image filename. Expected format: "
-                "location_state_latitude_longitude_flood.jpg"
-            )
-        )
+        return None
 
     location_part = match.group("location")
 
@@ -279,22 +326,13 @@ def _extract_location_from_filename(filename: str):
             match.group("longitude")
         )
     except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Latitude or longitude in the filename is invalid."
-        )
+        return None
 
     if not -90 <= parsed_latitude <= 90:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid latitude in filename: {parsed_latitude}"
-        )
+        return None
 
     if not -180 <= parsed_longitude <= 180:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid longitude in filename: {parsed_longitude}"
-        )
+        return None
 
     # Convert the machine-readable filename part into a human-readable
     # location label while preserving the original filename separately.
@@ -363,13 +401,23 @@ async def predict(
     # Any live/browser GPS values sent by the frontend are ignored.
     # --------------------------------------------------------
 
-    filename_metadata = _extract_location_from_filename(
-        file.filename
+    filename_metadata = _extract_location_from_filename(file.filename)
+    image_latitude = (
+        filename_metadata["latitude"]
+        if filename_metadata
+        else latitude
     )
-
-    image_latitude = filename_metadata["latitude"]
-    image_longitude = filename_metadata["longitude"]
-    image_location = filename_metadata["location"]
+    image_longitude = (
+        filename_metadata["longitude"]
+        if filename_metadata
+        else longitude
+    )
+    image_location = (
+        filename_metadata["location"]
+        if filename_metadata
+        else (location or "Unspecified drone location")
+    )
+    location_source = "filename" if filename_metadata else "form"
 
     # --------------------------------------------------------
     # Validate image
@@ -592,8 +640,7 @@ async def predict(
             "longitude":
                 image_longitude,
 
-            "location_source":
-                "filename",
+            "location_source": location_source,
 
             # Current detector does not calculate
             # analysis duration.
@@ -691,8 +738,7 @@ async def predict(
         "location":
             image_location,
 
-        "location_source":
-            "filename",
+        "location_source": location_source,
 
         "image_path":
             processed_image_path,
@@ -1164,15 +1210,30 @@ async def analyze_sos(request: SOSRequest):
             incident_columns = {
                 "incident_id", "location_text", "latitude", "longitude",
                 "people_count", "priority_score", "priority_level", "status",
-                "people_remaining"
+                "people_remaining", "original_message", "needs_rescue",
+                "needs_shelter"
             }
-            operations_supabase.table("rescue_incidents").upsert(
-                {
+            needs = result.get("needs", {})
+            enriched_row = {
+                key: value
+                for key, value in {
+                    **incident_row,
+                    "original_message": request.message,
+                    "needs_rescue": bool(needs.get("rescue")),
+                    "needs_shelter": bool(needs.get("shelter")),
+                }.items()
+                if key in incident_columns
+            }
+            try:
+                operations_supabase.table("rescue_incidents").upsert(enriched_row).execute()
+            except Exception as metadata_error:
+                print("SOS metadata columns unavailable; using legacy incident schema:", repr(metadata_error))
+                legacy_row = {
                     key: value
-                    for key, value in incident_row.items()
-                    if key in incident_columns
+                    for key, value in enriched_row.items()
+                    if key not in {"original_message", "needs_rescue", "needs_shelter"}
                 }
-            ).execute()
+                operations_supabase.table("rescue_incidents").upsert(legacy_row).execute()
         except Exception as log_err:
             raise RuntimeError(
                 f"Failed to save incident to rescue_incidents: {log_err}"
@@ -1514,10 +1575,13 @@ async def priority_dashboard(
             "pending",
             "active",
             "open",
-            "new"
+            "new",
+            "waiting_for_rescue",
+            "partially_assigned",
+            "fully_assigned",
         }
 
-        sos_records = list(SOS_STORE)
+        sos_records = load_persistent_sos_records()
 
         # Newest SOS first
         sos_records.reverse()
@@ -4419,3 +4483,22 @@ async def get_thingspeak_sensor_data():
         "readings": readings,
         "latest": readings[0] if readings else None,
     }
+
+
+@app.get("/api/drone-detections")
+def get_drone_detections():
+    """Return durable drone analysis history for every client."""
+    try:
+        response = (
+            supabase.table("drone_detections")
+            .select("*")
+            .order("id", desc=True)
+            .limit(50)
+            .execute()
+        )
+        return {"detections": response.data or []}
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not load drone detection history: {error}",
+        )

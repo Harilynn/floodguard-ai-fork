@@ -45,6 +45,7 @@ interface Emergency {
   sos_data?: {
     needs?: {
       shelter?: boolean | null
+      rescue?: boolean | null
     }
   }
 }
@@ -670,8 +671,9 @@ export default function SafeRoutePlanner() {
     (emergency) => emergency.sos_id === selectedEmergencyId
   )
 
-  const shelterRequired = Boolean(
-    selectedEmergency?.sos_data?.needs?.shelter
+  const routeRequired = Boolean(
+    selectedEmergency?.sos_data?.needs?.shelter ||
+    selectedEmergency?.sos_data?.needs?.rescue
   )
 
   // ==========================================================
@@ -808,21 +810,21 @@ export default function SafeRoutePlanner() {
   // ==========================================================
 
   useEffect(() => {
-    if (!userLocation || !shelterRequired) {
+    if (!userLocation || !routeRequired) {
       setShelters([])
       setRecommendation(null)
       return
     }
 
     fetchShelters(userLocation)
-  }, [userLocation, shelterRequired])
+  }, [userLocation, routeRequired])
 
   // ==========================================================
   // RECOMMEND SHELTER
   // ==========================================================
 
   useEffect(() => {
-    if (!userLocation || !shelterRequired || shelters.length === 0) {
+    if (!userLocation || !routeRequired || shelters.length === 0) {
       setRecommendation(null)
       return
     }
@@ -836,7 +838,7 @@ export default function SafeRoutePlanner() {
   }, [
     userLocation,
     shelters,
-    shelterRequired,
+    routeRequired,
   ])
 
   // ==========================================================
@@ -989,9 +991,9 @@ export default function SafeRoutePlanner() {
               </div>
             </div>
             <div className="text-sm text-slate-600">
-              {shelterRequired
-                ? "Shelter assistance requested. Nearby shelters are shown below."
-                : "Shelter assistance was not requested for this SOS."}
+              {routeRequired
+                ? "Rescue or shelter assistance requested. Nearby shelters are shown below."
+                : "This SOS does not request rescue or shelter routing."}
             </div>
           </div>
         </Panel>
@@ -1027,7 +1029,7 @@ export default function SafeRoutePlanner() {
           RECOMMENDATION
       ====================================================== */}
 
-      {shelterRequired &&
+      {routeRequired &&
         userLocation &&
         recommendation && (
           <Panel className="p-5">
@@ -1314,7 +1316,7 @@ export default function SafeRoutePlanner() {
           NO SHELTERS
       ====================================================== */}
 
-      {shelterRequired &&
+      {routeRequired &&
         userLocation &&
         !loading &&
         shelters.length === 0 &&

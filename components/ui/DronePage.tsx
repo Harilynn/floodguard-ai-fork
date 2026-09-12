@@ -33,8 +33,6 @@ type DetectionHistory = {
   analysisStatus?: string
 }
 
-const HISTORY_KEY = "floodguard_detection_history"
-
 export default function DronePage() {
   // ============================================================
   // CURRENT IMAGE / ANALYSIS STATE
@@ -99,21 +97,28 @@ export default function DronePage() {
   // ============================================================
 
   useEffect(() => {
-    try {
-      const savedHistory =
-        localStorage.getItem(HISTORY_KEY)
-
-      if (savedHistory) {
-        setHistory(
-          JSON.parse(savedHistory)
-        )
-      }
-    } catch (error) {
-      console.error(
-        "Could not load detection history:",
-        error
-      )
-    }
+    const apiBaseUrl = process.env.NEXT_PUBLIC_FLOODGAURD_API_URL || "http://127.0.0.1:8000"
+    fetch(`${apiBaseUrl}/api/drone-detections`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        const items = Array.isArray(data?.detections) ? data.detections : []
+        setHistory(items.map((item: any) => ({
+          id: String(item.id),
+          droneId: item.drone_id || "Unassigned",
+          filename: item.image_path || "Drone image",
+          peopleCount: Number(item.people_detected || 0),
+          averageConfidence: Math.round(Number(item.confidence || 0) * 100),
+          highestConfidence: Math.round(Number(item.confidence || 0) * 100),
+          timestamp: item.created_at || new Date().toISOString(),
+          status: "Completed",
+          latitude: item.latitude,
+          longitude: item.longitude,
+          location: item.location,
+          modelName: item.model_name,
+          analysisStatus: item.analysis_status,
+        })))
+      })
+      .catch((error) => console.error("Could not load detection history:", error))
   }, [])
 
 
@@ -140,9 +145,7 @@ export default function DronePage() {
       /^(.+?)_(-?\d+(?:\.\d+)?)_(-?\d+(?:\.\d+)?)_flood(?:_[^_]*)?$/i
     )
 
-    if (!match) {
-      return null
-    }
+    if (!match) return { location: "Unspecified drone location", latitude: null, longitude: null }
 
     const locationPart = match[1]
 
@@ -162,7 +165,7 @@ export default function DronePage() {
       parsedLongitude < -180 ||
       parsedLongitude > 180
     ) {
-      return null
+      return { location: "Unspecified drone location", latitude: null, longitude: null }
     }
 
     const parsedLocation =
@@ -252,7 +255,8 @@ export default function DronePage() {
 
       try {
         const formData = new FormData()
-        formData.append("file", file)
+          formData.append("file", file)
+          formData.append("location", extractLocationFromFilename(file.name)?.location || "Unspecified drone location")
 
         // IMPORTANT: existing endpoint and model are unchanged.
         const apiBaseUrl =
@@ -336,7 +340,6 @@ export default function DronePage() {
 
         setHistory((previousHistory) => {
           const updatedHistory = [newHistoryItem, ...previousHistory].slice(0, 20)
-          localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory))
           return updatedHistory
         })
 
