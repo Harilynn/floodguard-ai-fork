@@ -37,7 +37,8 @@ from backend.services.priority import calculate_priority
 # LOAD ENVIRONMENT VARIABLES
 # ============================================================
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 # ============================================================
@@ -854,17 +855,20 @@ def _geocode_sos_location(extracted):
         extracted["location"] = location_data
         return False
 
-    if not GOOGLE_MAPS_API_KEY:
-        print(
-            "⚠️ GOOGLE_MAPS_API_KEY not configured; "
-            "SOS coordinates unavailable."
-        )
-        extracted["location"] = location_data
-        return False
-
     address = location_text
     if "india" not in address.lower():
         address = f"{address}, India"
+
+    if not GOOGLE_MAPS_API_KEY:
+        print(
+            "⚠️ GOOGLE_MAPS_API_KEY not configured; "
+            "trying OpenStreetMap geocoding."
+        )
+        return _geocode_sos_location_nominatim(
+            extracted,
+            location_data,
+            address,
+        )
 
     # ============================================================
     # 1. GOOGLE GEOCODING API
@@ -1055,6 +1059,48 @@ def _geocode_sos_location(extracted):
             f"⚠️ Google Places fallback failed for "
             f"'{location_text}': {e}"
         )
+
+    return _geocode_sos_location_nominatim(
+        extracted,
+        location_data,
+        address,
+    )
+
+
+def _geocode_sos_location_nominatim(extracted, location_data, address):
+    """Resolve a place name when a Google Maps key is unavailable."""
+    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode({
+        "q": address,
+        "format": "jsonv2",
+        "limit": 1,
+    })
+
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "FloodGuard/1.0 emergency-route-planner",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            results = json.loads(response.read().decode("utf-8", errors="replace"))
+
+        if results:
+            latitude = float(results[0]["lat"])
+            longitude = float(results[0]["lon"])
+            location_data.update({
+                "latitude": latitude,
+                "longitude": longitude,
+                "geocoded": True,
+                "geocoded_address": results[0].get("display_name"),
+                "coordinate_source": "nominatim",
+            })
+            extracted["location"] = location_data
+            print("📍 SOS location geocoded with Nominatim:", address, "→", latitude, longitude)
+            return True
+    except Exception as error:
+        print(f"⚠️ Nominatim geocoding failed for '{address}': {error}")
 
     extracted["location"] = location_data
     return False
