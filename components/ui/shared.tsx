@@ -26,7 +26,7 @@ export function StatusBadge({ label, tone = 'neutral' }: { label: string; tone?:
 }
 
 export function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-lg border border-slate-200 bg-white shadow-sm ${className}`}>{children}</div>
+  return <div className={`rounded-xl border border-[#D7E3EC] bg-white shadow-[0_8px_24px_rgba(15,39,66,0.06)] ${className}`}>{children}</div>
 }
 
 export function SectionHeader({
@@ -41,7 +41,7 @@ export function SectionHeader({
   icon?: string
 }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
+    <div className="mb-5 flex items-center justify-between gap-3">
       <div className="flex items-center gap-3">
         {icon && (
           <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[#D6E2EE] bg-[#EAF3F8] text-[#1261A0]">
@@ -49,8 +49,8 @@ export function SectionHeader({
           </div>
         )}
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#627D98]">{eyebrow}</div>
-          <h3 className="mt-1 text-lg font-semibold text-[#173B5E]">{title}</h3>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1769AA]">{eyebrow}</div>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight text-[#102A43]">{title}</h3>
         </div>
       </div>
       {action}
@@ -81,14 +81,14 @@ export function MetricCard({
   }
 
   return (
-    <Panel className="p-4">
+    <Panel className="p-5">
       <div className="flex items-center justify-between">
-        <div className="flex h-9 w-9 items-center justify-center rounded-md border border-[#D6E2EE] bg-[#EAF3F8] text-[#1261A0]">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#CBE5F2] bg-[#EAF6FB] text-[#1769AA]">
           <Icon name={icon} size={18} />
         </div>
         <StatusBadge label={meta ?? 'Live'} tone={tone} />
       </div>
-      <div className="mt-4 text-[11px] font-medium uppercase tracking-[0.14em] text-[#627D98]">{label}</div>
+      <div className="mt-5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#526D82]">{label}</div>
       <div className={`mt-2 text-3xl font-bold tabular-nums ${toneMap[tone]}`}>{value}</div>
     </Panel>
   )

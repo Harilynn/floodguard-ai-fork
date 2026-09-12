@@ -273,24 +273,31 @@ export default function UserDashboard() {
           DASHBOARD
       ============================================================ */}
 
-      <section className="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
+      <section className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
 
         {/* GREETING */}
 
-        <div className="mb-8">
+        <div className="relative mb-8 overflow-hidden rounded-2xl border border-[#184564] bg-[#0B1D2D] px-6 py-8 text-white shadow-[0_16px_40px_rgba(11,29,45,0.16)] sm:px-9 sm:py-10">
 
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-            Emergency dashboard
+          <div className="absolute -right-14 -top-16 h-48 w-48 rounded-full border-[22px] border-[#2B7EA8]/25" />
+          <div className="absolute -bottom-20 right-24 h-40 w-40 rounded-full border-[16px] border-[#E47A5A]/20" />
+
+          <p className="relative text-xs font-semibold uppercase tracking-[0.2em] text-[#7DD3FC]">
+            FloodGuard public assistance
           </p>
 
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#0f2742]">
-            How can we help?
+          <h1 className="relative mt-3 max-w-xl text-3xl font-semibold tracking-tight sm:text-4xl">
+            Help is closer than it feels.
           </h1>
 
-          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-            Request emergency assistance, check your requests,
-            or access safety information.
+          <p className="relative mt-3 max-w-xl text-sm leading-6 text-[#C4D7E8]">
+            Request emergency assistance, follow the response status, and find a safe shelter when one is needed.
           </p>
+
+          <div className="relative mt-7 flex flex-wrap gap-2 text-xs font-medium text-[#D9EDF7]">
+            <span className="rounded-full border border-[#39749A] bg-[#123A56] px-3 py-1.5">Live response network</span>
+            <span className="rounded-full border border-[#39749A] bg-[#123A56] px-3 py-1.5">Location-aware routing</span>
+          </div>
 
         </div>
 
@@ -299,9 +306,9 @@ export default function UserDashboard() {
             SOS CARD
         ============================================================ */}
 
-        <div className="overflow-hidden rounded-2xl border border-red-100 bg-white">
+        <div className="overflow-hidden rounded-2xl border border-[#F0C9C2] bg-white shadow-[0_10px_28px_rgba(15,39,66,0.07)]">
 
-          <div className="p-6 sm:p-8">
+          <div className="bg-gradient-to-br from-white via-white to-[#FFF6F2] p-6 sm:p-8">
 
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
 

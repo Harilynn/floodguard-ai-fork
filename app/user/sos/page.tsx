@@ -373,13 +373,13 @@ export default function UserSOSPage() {
           HEADER
       ============================================================ */}
 
-      <header className="border-b border-slate-200 bg-white">
+      <header className="border-b border-[#183B5B] bg-[#0B1D2D] text-white">
 
         <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-4 sm:px-8">
 
           <div className="flex items-center gap-3">
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0f2742] text-white">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F4FAFC] text-[#0B1D2D]">
 
               <Cross
                 size={18}
@@ -395,14 +395,14 @@ export default function UserSOSPage() {
               </div>
 
               <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Emergency assistance
+                <div className="text-[#9FC3DD]">Emergency assistance</div>
               </div>
 
             </div>
 
           </div>
 
-          <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
+          <div className="hidden items-center gap-2 text-xs text-[#C4D7E8] sm:flex">
 
             <span className="h-2 w-2 rounded-full bg-green-500" />
 
@@ -540,17 +540,17 @@ export default function UserSOSPage() {
 
           {/* FORM HEADER */}
 
-          <div className="mb-8">
+          <div className="mb-8 rounded-2xl border border-[#CBE5F2] bg-gradient-to-br from-white to-[#EAF6FB] p-6 sm:p-8">
 
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Emergency request
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#1769AA]">
+              Emergency request / step 1
             </p>
 
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f2742] sm:text-3xl">
               Tell us what you need
             </h1>
 
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm leading-6 text-[#526D82]">
               A few details help the response team act faster.
             </p>
 
