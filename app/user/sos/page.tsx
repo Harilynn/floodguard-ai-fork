@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -32,6 +32,10 @@ type Need =
   | "OTHER"
 
 type SosResponse = {
+  id?: string
+  status?: string
+  dispatch_status?: string
+  dispatch_message?: string
   source_type?: string
 
   location?: {
@@ -70,6 +74,16 @@ type SosResponse = {
   contact_info?: string[] | null
 
   original_message?: string
+}
+
+type NearbyShelter = {
+  id?: string
+  shelter_id?: string
+  name: string
+  address?: string
+  latitude: number
+  longitude: number
+  distanceKm?: number
 }
 
 const needOptions: {
@@ -128,6 +142,8 @@ export default function UserSOSPage() {
 
   const [message, setMessage] = useState("")
 
+  const [locationText, setLocationText] = useState("")
+
 
   const [submitting, setSubmitting] =
     useState(false)
@@ -136,6 +152,46 @@ export default function UserSOSPage() {
 
   const [result, setResult] =
     useState<SosResponse | null>(null)
+
+  const [nearbyShelters, setNearbyShelters] =
+    useState<NearbyShelter[]>([])
+
+  const [sheltersLoading, setSheltersLoading] =
+    useState(false)
+
+  useEffect(() => {
+    if (step !== "submitted" || !result?.id) {
+      return
+    }
+
+    let active = true
+
+    const refreshStatus = async () => {
+      try {
+        const response = await fetch(`${API_URL}/sos`, { cache: "no-store" })
+        if (!response.ok) return
+        const data = await response.json()
+        const current = data?.requests?.find(
+          (request: { id?: string }) => request.id === result.id
+        )
+        if (!active || !current) return
+
+        setResult((previous) => ({
+          ...previous,
+          status: current.status,
+          dispatch_status: current.dispatch_status,
+          dispatch_message: current.dispatch_message,
+        }))
+      } catch {
+      }
+    }
+
+    const interval = window.setInterval(refreshStatus, 10000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [step, result?.id])
 
 
   function toggleNeed(need: Need) {
@@ -157,9 +213,11 @@ export default function UserSOSPage() {
       message.trim() ||
       "Emergency assistance required."
 
+    const location = locationText.trim() || "not provided"
+
     return `${people} ${
       people === 1 ? "person" : "people"
-    } need help. Needs: ${needsText}. Location: not provided. Situation: ${description}`
+    } need help. Needs: ${needsText}. Location: ${location}. Situation: ${description}`
   }
 
 
@@ -241,6 +299,10 @@ export default function UserSOSPage() {
       // Keep the original message available on the result screen
       const finalResult: SosResponse = {
         ...extracted,
+        id: data?.id,
+        status: data?.status,
+        dispatch_status: data?.dispatch_status,
+        dispatch_message: data?.dispatch_message,
         original_message:
           data?.original_message ??
           extracted?.original_message ??
@@ -248,6 +310,33 @@ export default function UserSOSPage() {
       }
       
       setResult(finalResult)
+
+      if (
+        finalResult.needs?.shelter &&
+        finalResult.location?.latitude !== null &&
+        finalResult.location?.latitude !== undefined &&
+        finalResult.location?.longitude !== null &&
+        finalResult.location?.longitude !== undefined
+      ) {
+        setSheltersLoading(true)
+        try {
+          const shelterResponse = await fetch(
+            `${API_URL}/shelters?latitude=${finalResult.location.latitude}&longitude=${finalResult.location.longitude}`
+          )
+          const shelterData = await shelterResponse.json()
+          setNearbyShelters(
+            Array.isArray(shelterData?.shelters)
+              ? shelterData.shelters.slice(0, 5)
+              : []
+          )
+        } catch {
+          setNearbyShelters([])
+        } finally {
+          setSheltersLoading(false)
+        }
+      } else {
+        setNearbyShelters([])
+      }
       
       // Feature 3 has successfully analyzed the request.
       // Only now move to the submitted/result screen.
@@ -270,7 +359,9 @@ export default function UserSOSPage() {
     setSelectedNeeds([])
     setPeople(1)
     setMessage("")
+    setLocationText("")
     setResult(null)
+    setNearbyShelters([])
     setError("")
   }
 
@@ -524,6 +615,22 @@ export default function UserSOSPage() {
 
           </div>
 
+          <div className="mt-6">
+            <label htmlFor="location" className="text-sm font-semibold text-[#0f2742]">
+              Where are you?
+            </label>
+            <input
+              id="location"
+              value={locationText}
+              onChange={(event) => setLocationText(event.target.value)}
+              placeholder="For example: Kuttanad, Kerala"
+              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#102a43] outline-none transition placeholder:text-slate-400 focus:border-[#1769AA] focus:ring-2 focus:ring-blue-100"
+            />
+            <p className="mt-2 text-[11px] text-slate-400">
+              A place name helps the response team locate you and find nearby shelters.
+            </p>
+          </div>
+
 
           {/* PEOPLE */}
 
@@ -770,6 +877,62 @@ export default function UserSOSPage() {
             </div>
 
           </div>
+
+          {result?.dispatch_status && (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-5">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                Response status
+              </div>
+              <div className="mt-2 text-lg font-semibold text-amber-950">
+                {result.dispatch_status.replaceAll("_", " ")}
+              </div>
+              <p className="mt-1 text-sm leading-6 text-amber-800">
+                {result.dispatch_message || "Your request is in the emergency queue."}
+              </p>
+            </div>
+          )}
+
+          {result?.needs?.shelter && (
+            <div className="mt-5 rounded-xl border border-blue-100 bg-[#F3F8FC] p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-[#0f2742]">
+                    Nearby shelter options
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Use your coordinates to choose a shelter and open directions.
+                  </p>
+                </div>
+                <MapPin size={18} className="text-blue-600" />
+              </div>
+
+              {sheltersLoading ? (
+                <div className="mt-4 text-sm text-slate-500">Finding nearby shelters…</div>
+              ) : nearbyShelters.length === 0 ? (
+                <div className="mt-4 text-sm text-slate-500">No nearby shelter options are available yet.</div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {nearbyShelters.map((shelter) => (
+                    <div key={shelter.shelter_id || shelter.id || shelter.name} className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-[#0f2742]">{shelter.name}</div>
+                        <div className="mt-1 text-xs text-slate-500">{shelter.address || "Address unavailable"}</div>
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&origin=${result.location?.latitude},${result.location?.longitude}&destination=${shelter.latitude},${shelter.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-md bg-[#1769AA] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#125788]"
+                      >
+                        <Navigation size={14} />
+                        View route
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
 
           {/* ========================================================

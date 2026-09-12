@@ -4275,6 +4275,61 @@ async def get_rescue_resources():
         raise HTTPException(status_code=500, detail=f"Failed to load rescue data: {str(e)}")
 
 
+@app.post("/api/rescue-resources/{resource_id}/release")
+async def release_rescue_resource(resource_id: str):
+    """Return a completed resource to the available pool."""
+    try:
+        resource = (
+            operations_supabase.table("rescue_resources")
+            .select("*")
+            .eq("resource_id", resource_id)
+            .single()
+            .execute()
+            .data
+        )
+        configured_capacity = next(
+            (
+                resource.get(field)
+                for field in ("capacity_total", "total_capacity", "capacity")
+                if resource.get(field) is not None
+            ),
+        )
+        if configured_capacity is None:
+            assignments = (
+                operations_supabase.table("rescue_assignments")
+                .select("people_assigned")
+                .eq("resource_id", resource_id)
+                .execute()
+                .data
+            )
+            configured_capacity = (
+                int(resource.get("capacity_remaining") or 0)
+                + sum(int(item.get("people_assigned") or 0) for item in assignments)
+            )
+
+        capacity = max(0, int(configured_capacity))
+        updated = (
+            operations_supabase.table("rescue_resources")
+            .update({"capacity_remaining": capacity, "status": "AVAILABLE"})
+            .eq("resource_id", resource_id)
+            .execute()
+            .data
+        )
+        return {
+            "success": True,
+            "resource": updated[0] if updated else {
+                "resource_id": resource_id,
+                "capacity_remaining": capacity,
+                "status": "AVAILABLE",
+            },
+        }
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not release resource {resource_id}: {error}",
+        )
+
+
 @app.get("/api/shelters-live")
 async def get_shelters_live():
     try:

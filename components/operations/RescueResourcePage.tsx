@@ -33,6 +33,7 @@ export default function RescueResourcePage() {
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [releasing, setReleasing] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -60,6 +61,19 @@ export default function RescueResourcePage() {
       setError(e.message)
     } finally {
       setRunning(false)
+    }
+  }
+
+  const releaseResource = async (resourceId: string) => {
+    setReleasing(resourceId)
+    setError(null)
+    try {
+      await apiPost(`/api/rescue-resources/${resourceId}/release`)
+      await load()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setReleasing(null)
     }
   }
 
@@ -127,7 +141,19 @@ export default function RescueResourcePage() {
                       </div>
                     </div>
                   </div>
-                  <StatusBadge label={resource.status} tone={statusTone[resource.status] ?? 'medium'} />
+                  <div className="flex items-center gap-3">
+                    <StatusBadge label={resource.status} tone={statusTone[resource.status] ?? 'medium'} />
+                    {resource.status === 'BUSY' && (
+                      <button
+                        type="button"
+                        onClick={() => releaseResource(resource.resource_id)}
+                        disabled={releasing === resource.resource_id}
+                        className="rounded-md border border-[#79B7D8] px-3 py-1.5 text-xs font-semibold text-blue-100 transition hover:bg-[#2d5a7b] disabled:opacity-50"
+                      >
+                        {releasing === resource.resource_id ? 'Releasing…' : 'Mark available'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
