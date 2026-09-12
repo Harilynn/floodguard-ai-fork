@@ -652,28 +652,29 @@ export default function SafeRoutePlanner() {
       const emergencies = Array.isArray(data.emergencies)
         ? data.emergencies
         : []
-      const emergency =
-        emergencies.find((item: { rank?: number }) => item.rank === 1)
-        console.log("SAFE ROUTE RANK 1 EMERGENCY:", emergency)
-console.log(
-  "SAFE ROUTE ORIGIN:",
-  emergency?.latitude,
-  emergency?.longitude
-)
+      const emergency = emergencies.find((item: {
+        latitude?: number | string | null
+        longitude?: number | string | null
+      }) => {
+        const latitude = Number(item.latitude)
+        const longitude = Number(item.longitude)
+        return (
+          Number.isFinite(latitude) &&
+          Number.isFinite(longitude)
+        )
+      })
 
       if (
         !emergency ||
-        typeof emergency.latitude !== "number" ||
-        !Number.isFinite(emergency.latitude) ||
-        typeof emergency.longitude !== "number" ||
-        !Number.isFinite(emergency.longitude)
+        !Number.isFinite(Number(emergency.latitude)) ||
+        !Number.isFinite(Number(emergency.longitude))
       ) {
         throw new Error("Top-priority rescue location is unavailable.")
       }
 
       setUserLocation({
-        latitude: emergency.latitude,
-        longitude: emergency.longitude,
+        latitude: Number(emergency.latitude),
+        longitude: Number(emergency.longitude),
       })
       setLocationError(null)
     } catch (error) {
