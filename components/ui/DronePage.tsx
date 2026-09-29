@@ -268,16 +268,24 @@ export default function DronePage() {
 
         if (!response.ok) {
           const errorText = await response.text()
-          throw new Error(errorText || "Drone analysis failed.")
+          let message = errorText || "Drone analysis failed."
+
+          try {
+            const errorPayload = JSON.parse(errorText)
+            message = errorPayload.detail || message
+          } catch {
+          }
+
+          throw new Error(message)
         }
 
         const contentType = response.headers.get("content-type")
         if (!contentType) throw new Error("Backend did not return a content type.")
 
-        const boundaryMatch = contentType.match(/boundary=([^;]+)/)
+        const boundaryMatch = contentType.match(/boundary\s*=\s*(?:"([^"]+)"|([^;\s]+))/i)
         if (!boundaryMatch) throw new Error("Could not find multipart boundary in response.")
 
-        const boundary = boundaryMatch[1]
+        const boundary = boundaryMatch[1] || boundaryMatch[2]
         const responseBuffer = await response.arrayBuffer()
         const responseText = new TextDecoder("latin1").decode(responseBuffer)
         const parts = responseText.split(`--${boundary}`)
@@ -295,7 +303,7 @@ export default function DronePage() {
         } | null = null
 
         for (const part of parts) {
-          if (part.includes("application/json") && part.includes("metadata")) {
+          if (part.toLowerCase().includes("application/json") && part.toLowerCase().includes("name=\"metadata\"")) {
             const jsonStart = part.indexOf("\r\n\r\n")
             if (jsonStart !== -1) {
               try {
@@ -382,7 +390,9 @@ export default function DronePage() {
         successful++
       } catch (err) {
         failed++
+        const message = err instanceof Error ? err.message : "Unknown analysis error."
         console.error(`Drone analysis error for ${file.name}:`, err)
+        setError(`${file.name}: ${message}`)
       }
     }
 
