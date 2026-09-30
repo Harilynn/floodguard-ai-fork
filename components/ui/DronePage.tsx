@@ -247,6 +247,7 @@ export default function DronePage() {
 
     let successful = 0
     let failed = 0
+    let lastFailure = ""
 
     // Sequential processing keeps CPU-based YOLO inference stable.
     for (let index = 0; index < selectedFiles.length; index++) {
@@ -392,6 +393,7 @@ export default function DronePage() {
         failed++
         const message = err instanceof Error ? err.message : "Unknown analysis error."
         console.error(`Drone analysis error for ${file.name}:`, err)
+        lastFailure = message
         setError(`${file.name}: ${message}`)
       }
     }
@@ -401,7 +403,7 @@ export default function DronePage() {
 
     if (failed > 0) {
       setError(
-        `${successful} image${successful === 1 ? "" : "s"} analyzed successfully. ${failed} failed.`
+        `${successful} image${successful === 1 ? "" : "s"} analyzed successfully. ${failed} failed.${lastFailure ? ` ${lastFailure}` : ""}`
       )
     }
   }
