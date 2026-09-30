@@ -35,6 +35,7 @@ class DroneDetector:
         # =====================================================
 
         self.model = YOLO(model_path)
+        torch.set_num_threads(1)
 
         # =====================================================
         # SETTINGS
@@ -423,15 +424,16 @@ class DroneDetector:
 
                     device=self.device,
 
+                    stream=True,
+
                     classes=[0],
 
                     verbose=False
                 )
 
-                if not results:
+                result = next(iter(results), None)
+                if result is None:
                     continue
-
-                result = results[0]
 
                 if result.boxes is None:
                     continue
